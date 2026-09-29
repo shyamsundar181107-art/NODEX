@@ -1,0 +1,2054 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NODEX - Smart City Management Platform</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        .NODEX-alarm {
+            animation: NODEX-red 1.5s infinite;
+        }
+        @keyframes NODEX-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .map-container { height: calc(100vh - 80px); }
+        @media (max-width: 768px) { .map-container { height: 60vh; } }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans overflow-hidden bg-slate-950 text-slate-100">
+
+    <!-- Top Navigation Bar -->
+    <header class="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 z-30 shrink-0">
+        <div class="flex items-center gap-3">
+            <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="md:hidden text-slate-400 hover:text-white p-1">
+                <i data-lucide="menu" class="w-6 h-6"></i>
+            </button>
+            <div class="flex items-center gap-2 cursor-pointer" onclick="toggleSection('dashboard')">
+                <div class="bg-gradient-to-tr from-cyan-500 to-blue-600 p-2 rounded-xl shadow-lg shadow-cyan-500/20">
+                    <i data-lucide="activity" class="w-5 h-5 text-white"></i>
+                </div>
+                <span class="font-bold text-xl tracking-tight bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">NODEX</span>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 hidden sm:inline-block">v2.5 Live</span>
+            </div>
+        </div>
+
+        <!-- Global Search Bar -->
+        <div class="relative max-w-md w-full mx-4 hidden md:block">
+            <div class="relative">
+                <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3 text-slate-400"></i>
+                <input type="text" id="global-search" oninput="handleSearch(this.value)" placeholder="Search hospitals, police, parks, Wi-Fi zones..." 
+                    class="w-full bg-slate-800/80 text-sm text-slate-200 pl-9 pr-10 py-2 rounded-lg border border-slate-700 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition">
+                <button id="clear-search" onclick="clearSearch()" class="hidden absolute right-3 top-2.5 text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <!-- Search Results Dropdown -->
+            <div id="search-results" class="hidden absolute left-0 right-0 top-11 bg-slate-900 border border-slate-800 rounded-lg shadow-2xl overflow-hidden z-50 max-h-80 overflow-y-auto"></div>
+        </div>
+
+        <!-- Actions / Alerts / Profile -->
+        <div class="flex items-center gap-3">
+            <button onclick="triggerEmergencySOS()" class="bg-red-600 hover:bg-red-700 text-white font-semibold text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 transition NODEX-alarm shadow-lg shadow-red-600/30">
+                <i data-lucide="siren" class="w-4 h-4"></i>
+                <span class="hidden sm:inline">SOS Emergency</span>
+            </button>
+            <button onclick="toggleSection('alerts')" class="relative p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
+                <i data-lucide="bell" class="w-5 h-5"></i>
+                <span class="absolute top-1 right-1 w-2 h-2 bg-cyan-500 rounded-full animate-ping"></span>
+                <span class="absolute top-1 right-1 w-2 h-2 bg-cyan-500 rounded-full"></span>
+            </button>
+            <div class="h-6 w-px bg-slate-800"></div>
+            <button onclick="toggleSection('profile')" class="flex items-center gap-2 p-1 rounded-lg hover:bg-slate-800 transition">
+                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80" alt="Avatar" class="w-8 h-8 rounded-full border border-cyan-500/50 object-cover">
+                <span class="text-xs font-medium text-slate-300 hidden sm:inline-block">Citizen Admin</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <div class="flex flex-1 overflow-hidden relative">
+        <!-- Sidebar Navigation -->
+        <aside id="sidebar" class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between absolute md:relative inset-y-0 left-0 z-20 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out">
+            <div class="p-3 space-y-1 overflow-y-auto">
+                <div class="text-[10px] uppercase font-semibold text-slate-500 px-3 pt-2 pb-1 tracking-wider">Main Menu</div>
+                <button onclick="toggleSection('dashboard')" id="nav-dashboard" class="nav-btn active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                    <span>Smart Dashboard</span>
+                </button>
+                <button onclick="toggleSection('digital-twin')" id="nav-digital-twin" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+                    <i data-lucide="map" class="w-4 h-4"></i>
+                    <span>Digital Twin Map</span>
+                </button>
+                <button onclick="toggleSection('city-simulator')" id="nav-city-simulator"
+    class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+    <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+    <span>What-If Simulator</span>
+</button>
+                <button onclick="toggleSection('time-travel')" id="nav-time-travel"
+    class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+    <i data-lucide="history" class="w-4 h-4"></i>
+    <span>Time Travel Machine</span>
+</button>
+<button onclick="toggleSection('command-centre')" id="nav-command-centre"
+    class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+    <i data-lucide="command" class="w-4 h-4"></i>
+    <span>Command Centre</span>
+</button>
+                <button onclick="toggleSection('network')" id="nav-network" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+                    <i data-lucide="wifi" class="w-4 h-4"></i>
+                    <span>Network Intelligence</span>
+                </button>
+                <button onclick="toggleSection('traffic')" id="nav-traffic" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+                    <i data-lucide="car" class="w-4 h-4"></i>
+                    <span>Live Traffic Layer</span>
+                </button>
+                
+                <div class="text-[10px] uppercase font-semibold text-slate-500 px-3 pt-4 pb-1 tracking-wider">Citizen Services</div>
+                <button onclick="toggleSection('complaints')" id="nav-complaints" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+                    <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                    <span>Complaints Portal</span>
+                </button>
+                <button onclick="toggleSection('emergency')" id="nav-emergency" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+                    <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                    <span>Emergency Hub</span>
+                </button>
+                <button onclick="toggleSection('wifi-finder')" id="nav-wifi-finder" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+                    <i data-lucide="rss" class="w-4 h-4"></i>
+                    <span>Public Wi-Fi Finder</span>
+                </button>
+                <button onclick="toggleSection('ai-assistant')" id="nav-ai-assistant" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+                    <i data-lucide="bot" class="w-4 h-4"></i>
+                    <span>AI City Assistant</span>
+                </button>
+                <button onclick="toggleSection('parking')" id="nav-parking"
+    class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+    <i data-lucide="car" class="w-4 h-4"></i>
+    <span>Smart Parking</span>
+</button>
+   
+
+<button onclick="toggleSection('alerts')" id="nav-alerts"
+    class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-cyan-400 transition">
+    <i data-lucide="newspaper" class="w-4 h-4"></i>
+                    <span>City News & Alerts</span>
+                </button>
+            </div>
+
+            <div class="p-4 border-t border-slate-800 bg-slate-900/50">
+                <div class="flex items-center justify-between text-xs text-slate-400">
+                    <span>City Network:</span>
+                    <span class="text-emerald-400 font-semibold flex items-center gap-1">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> 99.8% Online
+                    </span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace Area -->
+        <main class="flex-1 overflow-y-auto bg-slate-950 p-4 md:p-6">
+
+            <!-- 1. SMART DASHBOARD -->
+            <section id="sec-dashboard" class="space-y-6">
+                <!-- Overview Stats -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
+                        <div class="p-3 bg-cyan-500/10 text-cyan-400 rounded-lg">
+                            <i data-lucide="activity" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-400">City Health Index</div>
+                            <div class="text-2xl font-bold text-slate-100">94.2%</div>
+                            <div class="text-[10px] text-emerald-400 font-medium">↑ 1.4% from last week</div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
+                        <div class="p-3 bg-amber-500/10 text-amber-400 rounded-lg">
+                            <i data-lucide="file-text" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-400">Active Complaints</div>
+                            <div class="text-2xl font-bold text-slate-100" id="dash-active-complaints">0</div>
+                            <div class="text-[10px] text-amber-400 font-medium">6 High Priority</div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
+                        <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                            <i data-lucide="wifi" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-400">Avg Network Speed</div>
+                            <div class="text-2xl font-bold text-slate-100">142 Mbps</div>
+                            <div class="text-[10px] text-emerald-400 font-medium">5G Coverage 88%</div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
+                        <div class="p-3 bg-blue-500/10 text-blue-400 rounded-lg">
+                            <i data-lucide="car" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-400">Traffic Congestion</div>
+                            <div class="text-2xl font-bold text-slate-100">Low (22%)</div>
+                            <div class="text-[10px] text-slate-400 font-medium">Avg Speed 42 km/h</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Network Health & Quick Actions -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-semibold text-slate-200 flex items-center gap-2">
+                                <i data-lucide="server" class="w-4 h-4 text-cyan-400"></i> Infrastructure Health Bar
+                            </h3>
+                            <span class="text-xs text-slate-400">Updated 1m ago</span>
+                        </div>
+                        <div class="space-y-3">
+                            <div>
+                                <div class="flex justify-between text-xs mb-1">
+                                    <span class="text-slate-400">Power Grid Load</span>
+                                    <span class="text-slate-200 font-medium">68% - Stable</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div class="bg-cyan-500 h-full rounded-full" style="width: 68%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-xs mb-1">
+                                    <span class="text-slate-400">Water Distribution System</span>
+                                    <span class="text-slate-200 font-medium">92% - Normal</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div class="bg-emerald-500 h-full rounded-full" style="width: 92%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-xs mb-1">
+                                    <span class="text-slate-400">Cellular & Wi-Fi Nodes</span>
+                                    <span class="text-slate-200 font-medium">99.1% - Operational</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div class="bg-blue-500 h-full rounded-full" style="width: 99.1%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Action Shortcuts -->
+                    <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-3">
+                        <h3 class="font-semibold text-slate-200 flex items-center gap-2">
+                            <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> Quick Actions
+                        </h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="toggleSection('complaints')" class="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 rounded-lg text-left transition flex flex-col gap-2">
+                                <i data-lucide="plus-circle" class="w-5 h-5 text-cyan-400"></i>
+                                <span class="text-xs font-medium text-slate-200">Log Complaint</span>
+                            </button>
+                            <button onclick="triggerEmergencySOS()" class="p-3 bg-red-950/40 hover:bg-red-900/40 border border-red-800/50 rounded-lg text-left transition flex flex-col gap-2">
+                                <i data-lucide="alert-triangle" class="w-5 h-5 text-red-400"></i>
+                                <span class="text-xs font-medium text-red-200">Report SOS</span>
+                            </button>
+                            <button onclick="toggleSection('wifi-finder')" class="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 rounded-lg text-left transition flex flex-col gap-2">
+                                <i data-lucide="wifi" class="w-5 h-5 text-emerald-400"></i>
+                                <span class="text-xs font-medium text-slate-200">Find Free Wi-Fi</span>
+                            </button>
+                            <button onclick="toggleSection('ai-assistant')" class="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 rounded-lg text-left transition flex flex-col gap-2">
+                                <i data-lucide="bot" class="w-5 h-5 text-purple-400"></i>
+                                <span class="text-xs font-medium text-slate-200">Ask AI Bot</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Citizen Complaints Feed -->
+                <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-semibold text-slate-200 flex items-center gap-2">
+                            <i data-lucide="list-todo" class="w-4 h-4 text-cyan-400"></i> Recent Complaints Feed
+                        </h3>
+                        <button onclick="toggleSection('complaints')" class="text-xs text-cyan-400 hover:underline">View All</button>
+                    </div>
+                    <div id="dash-complaints-list" class="space-y-2"></div>
+                </div>
+            </section>
+
+            <!-- 2. DIGITAL TWIN MAP -->
+            <section id="sec-digital-twin" class="hidden space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-900 p-3 rounded-xl border border-slate-800">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Category Filters -->
+                        <span class="text-xs text-slate-400 font-medium mr-1">Layers:</span>
+                        <button onclick="toggleMapFilter('roads')" id="filter-roads" class="map-filter-btn active bg-cyan-600 text-white text-xs px-2.5 py-1 rounded-md flex items-center gap-1 transition">
+                            <i data-lucide="navigation" class="w-3 h-3"></i> Roads
+                        </button>
+                        <button onclick="toggleMapFilter('hospitals')" id="filter-hospitals" class="map-filter-btn active bg-rose-600 text-white text-xs px-2.5 py-1 rounded-md flex items-center gap-1 transition">
+                            <i data-lucide="heart-pulse" class="w-3 h-3"></i> Hospitals
+                        </button>
+                        <button onclick="toggleMapFilter('police')" id="filter-police" class="map-filter-btn active bg-blue-600 text-white text-xs px-2.5 py-1 rounded-md flex items-center gap-1 transition">
+                            <i data-lucide="shield" class="w-3 h-3"></i> Police
+                        </button>
+                        <button onclick="toggleMapFilter('schools')" id="filter-schools" class="map-filter-btn active bg-amber-600 text-white text-xs px-2.5 py-1 rounded-md flex items-center gap-1 transition">
+                            <i data-lucide="graduation-cap" class="w-3 h-3"></i> Schools
+                        </button>
+                        <button onclick="toggleMapFilter('wifi')" id="filter-wifi" class="map-filter-btn active bg-emerald-600 text-white text-xs px-2.5 py-1 rounded-md flex items-center gap-1 transition">
+                            <i data-lucide="wifi" class="w-3 h-3"></i> Wi-Fi
+                        </button>
+                        <button onclick="toggleMapFilter('complaints')" id="filter-complaints" class="map-filter-btn active bg-purple-600 text-white text-xs px-2.5 py-1 rounded-md flex items-center gap-1 transition">
+                            <i data-lucide="alert-circle" class="w-3 h-3"></i> Complaints
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <!-- Overlay Toggles -->
+                        <button onclick="toggleTrafficOverlay()" id="btn-toggle-traffic" class="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs px-3 py-1 rounded-md flex items-center gap-1.5 transition">
+                            <i data-lucide="car" class="w-3.5 h-3.5 text-amber-400"></i> Traffic Overlay
+                        </button>
+                        <button onclick="toggleNetworkOverlay()" id="btn-toggle-network" class="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs px-3 py-1 rounded-md flex items-center gap-1.5 transition">
+                            <i data-lucide="wifi" class="w-3.5 h-3.5 text-cyan-400"></i> Signal Heatmap
+                        </button>
+                        <button onclick="locateUserGPS()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1 rounded-md flex items-center gap-1 transition">
+                            <i data-lucide="crosshair" class="w-3.5 h-3.5"></i> Locate Me
+                        </button>
+                    </div>
+                </div>
+
+                <div class="relative rounded-xl overflow-hidden border border-slate-800 shadow-2xl">
+                    <div id="map" class="w-full map-container z-10"></div>
+
+                    <!-- Map Layer Switcher Floating Widget -->
+                    <div class="absolute bottom-4 left-4 z-20 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-2 rounded-lg flex gap-1 shadow-lg">
+                        <button onclick="switchTileLayer('osm')" id="tile-osm" class="px-2.5 py-1 text-xs rounded bg-cyan-600 text-white">Default</button>
+                        <button onclick="switchTileLayer('satellite')" id="tile-sat" class="px-2.5 py-1 text-xs rounded bg-slate-800 text-slate-300 hover:bg-slate-700">Satellite</button>
+                    </div>
+
+                    <!-- Live Route Planner Panel (Collapsible Overlay) -->
+                    <div id="route-panel" class="hidden absolute top-4 right-4 z-20 w-80 bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-xl p-4 shadow-2xl space-y-3">
+                        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                            <h4 class="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1">
+                                <i data-lucide="route" class="w-4 h-4"></i> Dynamic Route Planner
+                            </h4>
+                            <button onclick="closeRoutePanel()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+                        </div>
+                        <div class="text-xs text-slate-300 space-y-1">
+                            <div class="flex justify-between"><span class="text-slate-400">Destination:</span> <span id="route-dest" class="font-medium">City Center</span></div>
+                            <div class="flex justify-between"><span class="text-slate-400">Est Distance:</span> <span id="route-dist" class="font-medium text-emerald-400">4.2 km</span></div>
+                            <div class="flex justify-between"><span class="text-slate-400">ETA:</span> <span id="route-eta" class="font-medium text-amber-400">12 mins (Traffic)</span></div>
+                        </div>
+                        <div class="p-2 bg-slate-800/80 rounded text-[11px] text-slate-400">
+                            ⚡ Alternate Route Suggested: Avoid Main Ave due to road maintenance near Sector 4.
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. NETWORK INTELLIGENCE FULL VIEW -->
+            <section id="sec-network" class="hidden space-y-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100">Network Intelligence & Provider Comparison</h2>
+                        <p class="text-xs text-slate-400">Real-time signal coverage, dead zone tracking, and telco analytics</p>
+                    </div>
+                    <button onclick="toggleDeadZoneModal()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 transition">
+                        <i data-lucide="rss" class="w-4 h-4"></i> Report Signal Dead Zone
+                    </button>
+                </div>
+
+                <!-- Provider Metrics Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-blue-400">Jio 5G</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">98% Coverage</span>
+                            <div class="text-xs text-slate-400">Dead Zones Reported: <span id="jio-deadzone-count" class="text-slate-100 font-semibold">0</span></div>
+                        </div>
+
+                        <div class="space-y-1">
+                            <div class="text-xs text-slate-400">Avg Speed: <span class="text-slate-100 font-semibold">310 Mbps</span></div>
+                            <div class="text-xs text-slate-400">Latency: <span class="text-slate-100 font-semibold">12 ms</span></div>
+                            <div class="text-xs text-slate-400">Dead Zones Reported: <span class="text-slate-100 font-semibold">2</span></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-red-400">Airtel 5G</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">96% Coverage</span>
+                        </div>
+                        <div class="space-y-1">
+                            <div class="text-xs text-slate-400">Avg Speed: <span class="text-slate-100 font-semibold">295 Mbps</span></div>
+                            <div class="text-xs text-slate-400">Latency: <span class="text-slate-100 font-semibold">15 ms</span></div>
+                            <div class="text-xs text-slate-400">Dead Zones Reported: <span class="text-slate-100 font-semibold">4</span></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-yellow-400">Vi 4G+</span>
+                            <span class="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 px-2 py-0.5 rounded">84% Coverage</span>
+                        </div>
+                        <div class="space-y-1">
+                            <div class="text-xs text-slate-400">Avg Speed: <span class="text-slate-100 font-semibold">78 Mbps</span></div>
+                            <div class="text-xs text-slate-400">Latency: <span class="text-slate-100 font-semibold">28 ms</span></div>
+                            <div class="text-xs text-slate-400">Dead Zones Reported: <span class="text-slate-100 font-semibold">9</span></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-orange-400">BSNL 4G</span>
+                            <span class="text-[10px] bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded">72% Coverage</span>
+                        </div>
+                        <div class="space-y-1">
+                            <div class="text-xs text-slate-400">Avg Speed: <span class="text-slate-100 font-semibold">32 Mbps</span></div>
+                            <div class="text-xs text-slate-400">Latency: <span class="text-slate-100 font-semibold">45 ms</span></div>
+                            <div class="text-xs text-slate-400">Dead Zones Reported: <span class="text-slate-100 font-semibold">0</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Signal Status Summary Legend -->
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-wrap gap-6 items-center">
+                    <span class="text-xs text-slate-400 font-medium">Signal Classifications:</span>
+                    <span class="flex items-center gap-2 text-xs"><span class="w-3 h-3 rounded-full bg-emerald-500"></span> Strong (> -70 dBm)</span>
+                    <span class="flex items-center gap-2 text-xs"><span class="w-3 h-3 rounded-full bg-yellow-500"></span> Moderate (-70 to -90 dBm)</span>
+                    <span class="flex items-center gap-2 text-xs"><span class="w-3 h-3 rounded-full bg-orange-500"></span> Weak (-90 to -110 dBm)</span>
+                    <span class="flex items-center gap-2 text-xs"><span class="w-3 h-3 rounded-full bg-red-500"></span> Dead Zone (&lt; -110 dBm)</span>
+                </div>
+            </section>
+
+            <!-- 4. LIVE TRAFFIC LAYER -->
+            <section id="sec-traffic" class="hidden space-y-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100">Live Traffic Control & Incident Management</h2>
+                        <p class="text-xs text-slate-400">Real-time arterial road congestion, accidents, and dynamic rerouting</p>
+                    </div>
+                    <button onclick="toggleSection('digital-twin'); toggleTrafficOverlay(true);" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-2 rounded-lg flex items-center gap-1.5">
+                        <i data-lucide="map-pin" class="w-4 h-4"></i> View Traffic on Map
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-semibold text-red-400 flex items-center gap-1">
+                                <i data-lucide="alert-triangle" class="w-4 h-4"></i> Major Incident
+                            </span>
+                            <span class="text-[10px] text-slate-400">10 mins ago</span>
+                        </div>
+                        <h4 class="font-bold text-slate-200 text-sm">North Outer Ring Road</h4>
+                        <p class="text-xs text-slate-400">2-lane blockage due to cargo spill. Clearance expected in 45 mins.</p>
+                        <div class="text-xs text-amber-400 font-medium pt-1">Delay: +25 mins</div>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-semibold text-amber-400 flex items-center gap-1">
+                                <i data-lucide="wrench" class="w-4 h-4"></i> Roadwork
+                            </span>
+                            <span class="text-[10px] text-slate-400">1 hour ago</span>
+                        </div>
+                        <h4 class="font-bold text-slate-200 text-sm">Metro Flyover (Sector 4)</h4>
+                        <p class="text-xs text-slate-400">Resurfacing work underway. Single lane operational.</p>
+                        <div class="text-xs text-amber-400 font-medium pt-1">Delay: +10 mins</div>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                                <i data-lucide="check-circle" class="w-4 h-4"></i> Clear Corridor
+                            </span>
+                            <span class="text-[10px] text-slate-400">Live</span>
+                        </div>
+                        <h4 class="font-bold text-slate-200 text-sm">Central Express Avenue</h4>
+                        <p class="text-xs text-slate-400">Traffic moving at optimal speed. Green lights synchronized.</p>
+                        <div class="text-xs text-emerald-400 font-medium pt-1">Delay: 0 mins</div>
+                    </div>
+                </div>
+            </section>
+                        <!-- WHAT-IF CITY SIMULATOR -->
+            <section id="sec-city-simulator" class="hidden space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-100">What-If City Simulator</h2>
+                    <p class="text-xs text-slate-400">
+                        Simulate city changes and see their estimated impact on traffic, network, and city health.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+                    <!-- Controls -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-5">
+                        <h3 class="font-semibold text-slate-200 flex items-center gap-2">
+                            <i data-lucide="sliders-horizontal" class="w-4 h-4 text-cyan-400"></i>
+                            Simulation Controls
+                        </h3>
+
+                        <div>
+                            <label class="text-xs text-slate-400">Traffic Congestion</label>
+                            <input id="sim-traffic" type="range" min="0" max="100" value="30"
+                                class="w-full mt-2 accent-cyan-500"
+                                oninput="updateWhatIfSimulator()">
+                            <div class="flex justify-between text-xs text-slate-500">
+                                <span>0%</span>
+                                <span id="sim-traffic-value">30%</span>
+                                <span>100%</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="text-xs text-slate-400">Network Availability</label>
+                            <input id="sim-network" type="range" min="50" max="100" value="90"
+                                class="w-full mt-2 accent-cyan-500"
+                                oninput="updateWhatIfSimulator()">
+                            <div class="flex justify-between text-xs text-slate-500">
+                                <span>50%</span>
+                                <span id="sim-network-value">90%</span>
+                                <span>100%</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="text-xs text-slate-400">Emergency Response</label>
+                            <input id="sim-response" type="range" min="0" max="100" value="80"
+                                class="w-full mt-2 accent-cyan-500"
+                                oninput="updateWhatIfSimulator()">
+                            <div class="flex justify-between text-xs text-slate-500">
+                                <span>0%</span>
+                                <span id="sim-response-value">80%</span>
+                                <span>100%</span>
+                            </div>
+                        </div>
+
+                        <button onclick="resetWhatIfSimulator()"
+                            class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2.5 rounded-lg">
+                            Reset Simulation
+                        </button>
+                    </div>
+
+                    <!-- Results -->
+                    <div class="lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+
+                        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                            <p class="text-xs text-slate-400">Estimated City Health</p>
+                            <div id="sim-health" class="text-3xl font-bold text-cyan-400 mt-2">82%</div>
+                            <p class="text-[11px] text-slate-500 mt-2">Simulation result</p>
+                        </div>
+
+                        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                            <p class="text-xs text-slate-400">Traffic Flow</p>
+                            <div id="sim-flow" class="text-3xl font-bold text-emerald-400 mt-2">70%</div>
+                            <p class="text-[11px] text-slate-500 mt-2">Estimated smooth flow</p>
+                        </div>
+
+                        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+                            <p class="text-xs text-slate-400">Response Score</p>
+                            <div id="sim-score" class="text-3xl font-bold text-amber-400 mt-2">80%</div>
+                            <p class="text-[11px] text-slate-500 mt-2">Emergency readiness</p>
+                        </div>
+
+                        <div class="md:col-span-3 bg-slate-900 border border-slate-800 rounded-xl p-5">
+                            <h3 class="font-semibold text-slate-200 mb-2">Simulation Summary</h3>
+                            <p id="sim-summary" class="text-sm text-slate-400">
+                                Adjust the controls to simulate different city conditions.
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+            <!-- TIME TRAVEL MACHINE -->
+<section id="sec-time-travel" class="hidden space-y-6">
+
+    <div>
+        <h2 class="text-xl font-bold text-slate-100">Time Travel Machine</h2>
+        <p class="text-xs text-slate-400">
+            Explore how city conditions change across different points in time.
+        </p>
+    </div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+
+        <div class="flex items-center justify-between mb-5">
+            <div>
+                <h3 class="font-semibold text-slate-200 flex items-center gap-2">
+                    <i data-lucide="history" class="w-4 h-4 text-cyan-400"></i>
+                    City Timeline
+                </h3>
+                <p class="text-xs text-slate-500 mt-1">
+                    Select a time period to view simulated city conditions.
+                </p>
+            </div>
+
+            <div id="time-travel-date"
+                 class="text-sm font-semibold text-cyan-400">
+                Today
+            </div>
+        </div>
+
+        <input
+            id="time-travel-slider"
+            type="range"
+            min="0"
+            max="6"
+            value="6"
+            class="w-full accent-cyan-500"
+            oninput="updateTimeTravel()"
+        >
+
+        <div class="flex justify-between text-xs text-slate-500 mt-2">
+            <span>6 days ago</span>
+            <span>Today</span>
+        </div>
+
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <p class="text-xs text-slate-400">City Health</p>
+            <div id="tt-health"
+                 class="text-3xl font-bold text-cyan-400 mt-2">
+                94%
+            </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <p class="text-xs text-slate-400">Traffic</p>
+            <div id="tt-traffic"
+                 class="text-3xl font-bold text-amber-400 mt-2">
+                22%
+            </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <p class="text-xs text-slate-400">Network</p>
+            <div id="tt-network"
+                 class="text-3xl font-bold text-emerald-400 mt-2">
+                99%
+            </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <p class="text-xs text-slate-400">Emergency Response</p>
+            <div id="tt-response"
+                 class="text-3xl font-bold text-purple-400 mt-2">
+                91%
+            </div>
+        </div>
+
+    </div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+        <h3 class="font-semibold text-slate-200 mb-2">
+            Timeline Summary
+        </h3>
+
+        <p id="tt-summary" class="text-sm text-slate-400">
+            Showing today's city conditions.
+        </p>
+    </div>
+
+</section>
+<!-- COMMAND CENTRE -->
+<section id="sec-command-centre" class="hidden space-y-6">
+
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-xl font-bold text-slate-100">Command Centre</h2>
+            <p class="text-xs text-slate-400">
+                Centralized monitoring of city operations and emergency services.
+            </p>
+        </div>
+
+        <div class="flex items-center gap-2 text-xs text-emerald-400">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            SYSTEM ONLINE
+        </div>
+    </div>
+
+    <!-- Live Status -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <p class="text-xs text-slate-400">City Network</p>
+            <div id="cc-network" class="text-3xl font-bold text-cyan-400 mt-2">--</div>
+            <p class="text-[11px] text-emerald-400 mt-2">Operational</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <p class="text-xs text-slate-400">Traffic Status</p>
+            <div id="cc-traffic" class="text-3xl font-bold text-amber-400 mt-2">--</div>
+            <p class="text-[11px] text-emerald-400 mt-2">Low Congestion</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <p class="text-xs text-slate-400">Emergency Events</p>
+            <div id="cc-sos" class="text-3xl font-bold text-red-400 mt-2">0</div>
+            <p class="text-[11px] text-slate-400 mt-2">Active incidents</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <p class="text-xs text-slate-400">Active Complaints</p>
+            <div id="cc-complaints" class="text-3xl font-bold text-purple-400 mt-2">0</div>
+            <p class="text-[11px] text-slate-400 mt-2">Citizen reports</p>
+        </div>
+
+    </div>
+
+    <!-- Operations -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <h3 class="font-semibold text-slate-200 mb-4">
+                City Operations
+            </h3>
+
+            <div class="space-y-3">
+
+                <div class="flex justify-between items-center">
+                    <span class="text-sm text-slate-400">Power Grid</span>
+                    <span class="text-xs text-emerald-400">68% Stable</span>
+                </div>
+
+                <div class="w-full bg-slate-800 rounded-full h-2">
+                    <div class="bg-emerald-500 h-2 rounded-full" style="width:68%"></div>
+                </div>
+
+                <div class="flex justify-between items-center pt-2">
+                    <span class="text-sm text-slate-400">Water Distribution</span>
+                    <span class="text-xs text-cyan-400">92% Normal</span>
+                </div>
+
+                <div class="w-full bg-slate-800 rounded-full h-2">
+                    <div class="bg-cyan-500 h-2 rounded-full" style="width:92%"></div>
+                </div>
+
+                <div class="flex justify-between items-center pt-2">
+                    <span class="text-sm text-slate-400">5G Coverage</span>
+                    <span class="text-xs text-purple-400">88%</span>
+                </div>
+
+                <div class="w-full bg-slate-800 rounded-full h-2">
+                    <div class="bg-purple-500 h-2 rounded-full" style="width:88%"></div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <h3 class="font-semibold text-slate-200 mb-4">
+                Command Actions
+            </h3>
+
+            <div class="grid grid-cols-2 gap-3">
+
+                <button onclick="toggleSection('complaints')"
+                    class="bg-slate-800 hover:bg-slate-700 rounded-lg p-4 text-left">
+                    <i data-lucide="clipboard-list" class="w-5 h-5 text-cyan-400 mb-2"></i>
+                    <div class="text-sm font-medium text-slate-200">
+                        Complaints
+                    </div>
+                    <div class="text-[11px] text-slate-500">
+                        Manage citizen reports
+                    </div>
+                </button>
+
+                <button onclick="toggleSection('emergency')"
+                    class="bg-slate-800 hover:bg-slate-700 rounded-lg p-4 text-left">
+                    <i data-lucide="shield-alert" class="w-5 h-5 text-red-400 mb-2"></i>
+                    <div class="text-sm font-medium text-slate-200">
+                        Emergency Hub
+                    </div>
+                    <div class="text-[11px] text-slate-500">
+                        Monitor emergency events
+                    </div>
+                </button>
+
+                <button onclick="toggleSection('traffic')"
+                    class="bg-slate-800 hover:bg-slate-700 rounded-lg p-4 text-left">
+                    <i data-lucide="car" class="w-5 h-5 text-amber-400 mb-2"></i>
+                    <div class="text-sm font-medium text-slate-200">
+                        Traffic Control
+                    </div>
+                    <div class="text-[11px] text-slate-500">
+                        View traffic incidents
+                    </div>
+                </button>
+
+                <button onclick="toggleSection('network')"
+                    class="bg-slate-800 hover:bg-slate-700 rounded-lg p-4 text-left">
+                    <i data-lucide="wifi" class="w-5 h-5 text-emerald-400 mb-2"></i>
+                    <div class="text-sm font-medium text-slate-200">
+                        Network
+                    </div>
+                    <div class="text-[11px] text-slate-500">
+                        Monitor connectivity
+                    </div>
+                </button>
+
+            </div>
+        </div>
+
+    </div>
+
+</section>
+            <!-- 5. COMPLAINTS PORTAL -->
+            <section id="sec-complaints" class="hidden space-y-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100">Citizen Complaints Portal</h2>
+                        <p class="text-xs text-slate-400">Report civic issues directly to municipality departments</p>
+                    </div>
+                    <button onclick="toggleComplaintModal()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 shadow-lg shadow-cyan-600/20">
+                        <i data-lucide="plus" class="w-4 h-4"></i> New Complaint
+                    </button>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                    <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+                        <div class="text-sm font-semibold text-slate-200">Logged Issues</div>
+                        <div class="flex gap-2">
+                            <select id="complaint-filter" onchange="filterComplaints(this.value)" class="bg-slate-800 border border-slate-700 text-xs text-slate-300 rounded px-2 py-1 focus:outline-none">
+                                <option value="all">All Priorities</option>
+                                <option value="high">High Priority</option>
+                                <option value="medium">Medium Priority</option>
+                                <option value="low">Low Priority</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="complaints-full-list" class="divide-y divide-slate-800"></div>
+                </div>
+            </section>
+
+            <!-- 6. EMERGENCY HUB -->
+            <section id="sec-emergency" class="hidden space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-100">Emergency Support Hub</h2>
+                    <p class="text-xs text-slate-400">Direct dispatch channels and nearest critical response centers</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-red-950/30 border border-red-800/50 rounded-xl p-5 space-y-3">
+                        <div class="p-3 bg-red-600/20 text-red-400 rounded-lg w-fit">
+                            <i data-lucide="phone-call" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-bold text-slate-100 text-lg">Police Control Room</h3>
+                        <p class="text-xs text-slate-400">Immediate crime reporting, safety assistance, and traffic dispatch.</p>
+                        <div class="text-2xl font-bold text-red-400">112 / 100</div>
+                        <button onclick="triggerEmergencySOS()" class="w-full bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2 rounded-lg transition">
+                            DISPATCH EMERGENCY ALERT
+                        </button>
+                    </div>
+
+                    <div class="bg-rose-950/30 border border-rose-800/50 rounded-xl p-5 space-y-3">
+                        <div class="p-3 bg-rose-600/20 text-rose-400 rounded-lg w-fit">
+                            <i data-lucide="heart-pulse" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-bold text-slate-100 text-lg">Medical Emergency</h3>
+                        <p class="text-xs text-slate-400">Ambulance dispatch and ICU trauma center coordination.</p>
+                        <div class="text-2xl font-bold text-rose-400">108</div>
+                        <button onclick="triggerEmergencySOS()" class="w-full bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold py-2 rounded-lg transition">
+                            REQUEST AMBULANCE
+                        </button>
+                    </div>
+
+                    <div class="bg-amber-950/30 border border-amber-800/50 rounded-xl p-5 space-y-3">
+                        <div class="p-3 bg-amber-600/20 text-amber-400 rounded-lg w-fit">
+                            <i data-lucide="flame" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-bold text-slate-100 text-lg">Fire & Rescue</h3>
+                        <p class="text-xs text-slate-400">Fire hazard mitigation, structural containment, and disaster response.</p>
+                        <div class="text-2xl font-bold text-amber-400">101</div>
+                        <button onclick="triggerEmergencySOS()" class="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold py-2 rounded-lg transition">
+                            ALERT FIRE DEPARTMENT
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 7. PUBLIC WI-FI FINDER -->
+            <section id="sec-wifi-finder" class="hidden space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-100">Municipal Free Wi-Fi Finder</h2>
+                    <p class="text-xs text-slate-400">High-speed municipal hot-spots available across city sectors</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="wifi-nodes-grid"></div>
+            </section>
+
+            <!-- 8. AI CITY ASSISTANT -->
+            <section id="sec-ai-assistant" class="hidden space-y-4">
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col h-[75vh]">
+                    <div class="flex items-center gap-3 border-b border-slate-800 pb-3">
+                        <div class="p-2 bg-purple-500/10 text-purple-400 rounded-lg">
+                            <i data-lucide="bot" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-100 text-sm">NODEX AI Assistant</h3>
+                            <p class="text-[11px] text-slate-400">Instant answers regarding city services, permits, and live traffic</p>
+                        </div>
+                    </div>
+
+                    <div id="ai-chat-messages" class="flex-1 overflow-y-auto py-4 space-y-3">
+                        <div class="bg-slate-800/80 p-3 rounded-lg max-w-lg text-xs text-slate-300">
+                            👋 Hello Citizen! How can I assist you today? You can ask me about live traffic, nearest hospitals, Wi-Fi spots, or how to file a complaint.
+                        </div>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-800 flex gap-2">
+                        <input type="text" id="ai-chat-input" onkeypress="if(event.key === 'Enter') sendAIMessage()" placeholder="Ask anything about the city..." 
+                            class="flex-1 bg-slate-800 border border-slate-700 text-xs text-slate-200 px-3 py-2.5 rounded-lg focus:outline-none focus:border-purple-500">
+                       
+                       <button
+    id="ai-voice-btn"
+    type="button"
+    onclick="startVoiceInput()"
+    title="Speak to NODEX"
+    class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+    <i data-lucide="mic" class="w-3.5 h-3.5"></i>
+</button>
+                            <button onclick="sendAIMessage()" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+                            <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 9. CITY NEWS & ALERTS -->
+             <section id="sec-parking" class="hidden space-y-6">
+
+    <div>
+        <h2 class="text-xl font-bold text-slate-100">Smart Parking</h2>
+        <p class="text-xs text-slate-400">
+            Real-time parking availability across city zones
+        </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-slate-100">Central City Parking</h3>
+                <span class="text-xs text-emerald-400">AVAILABLE</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-2">Main Bus Stand</p>
+            <div class="text-3xl font-bold text-emerald-400 mt-4">
+            
+            </div>
+            <p class="text-xs text-slate-400">Available Spaces</p>
+            <div class="text-xs text-slate-500 mt-2">Total Capacity: 100</div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-slate-100">Market Parking</h3>
+                <span class="text-xs text-amber-400">LIMITED</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-2">Central Market</p>
+            <div class="text-3xl font-bold text-amber-400 mt-4">
+                12
+            </div>
+            <p class="text-xs text-slate-400">Available Spaces</p>
+            <div class="text-xs text-slate-500 mt-2">Total Capacity: 80</div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-slate-100">Railway Parking</h3>
+                <span class="text-xs text-rose-400">FULL</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-2">Railway Station</p>
+            <div class="text-3xl font-bold text-rose-400 mt-4">
+                0
+            </div>
+            <p class="text-xs text-slate-400">Available Spaces</p>
+            <div class="text-xs text-slate-500 mt-2">Total Capacity: 60</div>
+        </div>
+
+    </div>
+
+</section>
+            <section id="sec-alerts" class="hidden space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-100">Official City Alerts & Bulletins</h2>
+                    <p class="text-xs text-slate-400">Verified advisories from city municipal governance</p>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex gap-4 items-start">
+                        <div class="p-3 bg-amber-500/10 text-amber-400 rounded-lg shrink-0">
+                            <i data-lucide="droplet" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <span class="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 px-2 py-0.5 rounded uppercase font-semibold">Scheduled Maintenance</span>
+                            <h3 class="font-bold text-slate-200 text-sm mt-1">Water Supply Maintenance in Sector 4 & 5</h3>
+                            <p class="text-xs text-slate-400 mt-1">Due to pipe upgrade works, water supply will remain restricted tomorrow between 10:00 AM and 4:00 PM. Residents are advised to store sufficient water.</p>
+                            <span class="text-[10px] text-slate-500 block mt-2">Published: 2 hours ago by Water Management Authority</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex gap-4 items-start">
+                        <div class="p-3 bg-cyan-500/10 text-cyan-400 rounded-lg shrink-0">
+                            <i data-lucide="trees" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <span class="text-[10px] bg-cyan-950 text-cyan-400 border border-cyan-800 px-2 py-0.5 rounded uppercase font-semibold">Community Event</span>
+                            <h3 class="font-bold text-slate-200 text-sm mt-1">Annual City Green & Eco Drive</h3>
+                            <p class="text-xs text-slate-400 mt-1">Join the community tree plantation drive at Central City Park this Saturday starting 8:00 AM. Free saplings provided.</p>
+                            <span class="text-[10px] text-slate-500 block mt-2">Published: 1 day ago by Parks & Recreation Dept</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 10. PROFILE SECTION -->
+            <section id="sec-profile" class="hidden space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-100">Citizen Profile</h2>
+                    <p class="text-xs text-slate-400">Manage account credentials, notifications, and logged interactions</p>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-2xl space-y-6">
+                    <div class="flex items-center gap-4">
+                        <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80" alt="Avatar" class="w-16 h-16 rounded-full border-2 border-cyan-500 object-cover">
+                        <div>
+                            <h3 class="font-bold text-slate-100 text-lg">Citizen Administrator</h3>
+                            <p class="text-xs text-slate-400">Citizen ID: #NX-8829102</p>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded mt-1 inline-block">KYC Verified</span>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4 pt-4 border-t border-slate-800 text-xs">
+                        <div class="flex justify-between py-2 border-b border-slate-800/50">
+                            <span class="text-slate-400">Email Address</span>
+                            <span class="text-slate-200 font-medium">admin@nodex.city.gov</span>
+                        </div>
+                        <div class="flex justify-between py-2 border-b border-slate-800/50">
+                            <span class="text-slate-400">Registered Zone</span>
+                            <span class="text-slate-200 font-medium">Sector 4 - Central District</span>
+                        </div>
+                        <div class="flex justify-between py-2 border-b border-slate-800/50">
+                            <span class="text-slate-400">Emergency Contact</span>
+                            <span class="text-slate-200 font-medium">+91 98765 43210</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- MODAL: ADD COMPLAINT -->
+    <div id="modal-complaint" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="font-bold text-slate-100 text-base">Log New Complaint</h3>
+                <button onclick="toggleComplaintModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form id="form-complaint" onsubmit="submitComplaint(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-400 mb-1">Issue Title</label>
+                    <input type="text" id="comp-title" required placeholder="e.g. Broken Streetlight on Main St" class="w-full bg-slate-800 border border-slate-700 text-slate-200 px-3 py-2 rounded focus:outline-none focus:border-cyan-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Category</label>
+                    <select id="comp-category" class="w-full bg-slate-800 border border-slate-700 text-slate-200 px-3 py-2 rounded focus:outline-none focus:border-cyan-500">
+                        <option value="Roads">Roads & Potholes</option>
+                        <option value="Electricity">Electricity & Lighting</option>
+                        <option value="Water">Water Supply</option>
+                        <option value="Sanitation">Sanitation & Garbage</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Priority Level</label>
+                    <select id="comp-priority" class="w-full bg-slate-800 border border-slate-700 text-slate-200 px-3 py-2 rounded focus:outline-none focus:border-cyan-500">
+                        <option value="High">High</option>
+                        <option value="Medium" selected>Medium</option>
+                        <option value="Low">Low</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Description</label>
+                    <textarea id="comp-desc" rows="3" required placeholder="Describe the problem details..." class="w-full bg-slate-800 border border-slate-700 text-slate-200 px-3 py-2 rounded focus:outline-none focus:border-cyan-500"></textarea>
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="toggleComplaintModal()" class="px-4 py-2 bg-slate-800 text-slate-300 rounded hover:bg-slate-700">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-cyan-600 text-white font-semibold rounded hover:bg-cyan-500">Submit Report</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: REPORT DEAD ZONE -->
+    <div id="modal-deadzone" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="font-bold text-slate-100 text-base">Report Network Dead Zone</h3>
+                <button onclick="toggleDeadZoneModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <form onsubmit="submitDeadZone(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-400 mb-1">Telecom Network</label>
+                    <select id="dz-provider" class="w-full bg-slate-800 border border-slate-700 text-slate-200 px-3 py-2 rounded focus:outline-none focus:border-amber-500">
+                        <option value="Jio 5G">Jio 5G</option>
+                        <option value="Airtel 5G">Airtel 5G</option>
+                        <option value="Vi 4G+">Vi 4G+</option>
+                        <option value="BSNL 4G">BSNL 4G</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Location Details</label>
+                    <input type="text" id="dz-location" required placeholder="e.g. Sector 4 Underground Metro Passage" class="w-full bg-slate-800 border border-slate-700 text-slate-200 px-3 py-2 rounded focus:outline-none focus:border-amber-500">
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="toggleDeadZoneModal()" class="px-4 py-2 bg-slate-800 text-slate-300 rounded hover:bg-slate-700">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-amber-600 text-white font-semibold rounded hover:bg-amber-500">Submit Log</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- APPLICATION LOGIC JS -->
+    <script>
+        // State Management & Mock Datasets
+        const CITY_CENTER = [11.0168, 76.9558]; // Default Lat/Lng
+
+        let map, tileLayers = {}, currentTileLayer = 'osm';
+        let markersGroup, trafficGroup, networkGroup;
+        let trafficOverlayVisible = false;
+        let networkOverlayVisible = false;
+
+        let cityData = {
+            complaints: [
+                { id: 'CMP-101', title: 'Pothole on Main Boulevard', category: 'Roads', priority: 'High', status: 'In Progress', date: '10 mins ago', lat: 11.0180, lng: 76.9580 },
+                { id: 'CMP-102', title: 'Streetlight outage near Sector 2', category: 'Electricity', priority: 'Medium', status: 'Pending', date: '35 mins ago', lat: 11.0120, lng: 76.9510 },
+                { id: 'CMP-103', title: 'Water Leakage in Public Park', category: 'Water', priority: 'Low', status: 'Resolved', date: '2 hours ago', lat: 11.0200, lng: 76.9600 }
+            ],
+            places: [
+                { name: 'City Central Hospital', type: 'hospitals', lat: 11.0195, lng: 76.9520, icon: 'heart-pulse', color: 'rose' },
+                { name: 'District Police Headquarters', type: 'police', lat: 11.0140, lng: 76.9590, icon: 'shield', color: 'blue' },
+                { name: 'St. Mary Public School', type: 'schools', lat: 11.0220, lng: 76.9540, icon: 'graduation-cap', color: 'amber' },
+                { name: 'Sector 3 Central Wi-Fi Hub', type: 'wifi', lat: 11.0160, lng: 76.9570, icon: 'wifi', color: 'emerald', speed: '250 Mbps' },
+                { name: 'Downtown Plaza Wi-Fi Zone', type: 'wifi', lat: 11.0110, lng: 76.9530, icon: 'wifi', color: 'emerald', speed: '180 Mbps' }
+            ],
+            mapFilters: { roads: true, hospitals: true, police: true, schools: true, wifi: true, complaints: true }
+        };
+
+        // Initialize Map & App
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            initMap();
+            renderComplaints();
+            renderWiFiNodes();
+        });
+
+        // Navigation Switcher
+        function toggleSection(sectionId) {
+            const sections = [
+    'dashboard',
+    'digital-twin',
+    'city-simulator',
+    'time-travel',
+    'command-centre',
+    'network',
+    'traffic',
+    'complaints',
+    'emergency',
+    'wifi-finder',
+    'ai-assistant',
+    'parking',
+    'alerts',
+    'profile'
+];
+            sections.forEach(sec => {
+                const el = document.getElementById(`sec-${sec}`);
+                const navBtn = document.getElementById(`nav-${sec}`);
+                if (el) el.classList.add('hidden');
+                if (navBtn) navBtn.classList.remove('text-cyan-400', 'bg-slate-800');
+            });
+
+            const activeSec = document.getElementById(`sec-${sectionId}`);
+            const activeBtn = document.getElementById(`nav-${sectionId}`);
+            if (activeSec) activeSec.classList.remove('hidden');
+            if (activeBtn) activeBtn.classList.add('text-cyan-400', 'bg-slate-800');
+
+            if (sectionId === 'digital-twin' && map) {
+                setTimeout(() => map.invalidateSize(), 200);
+            }
+
+            // Close mobile menu
+            document.getElementById('sidebar').classList.add('-translate-x-full');
+        }
+
+        function toggleMobileMenu() {
+            document.getElementById('sidebar').classList.toggle('-translate-x-full');
+        }
+
+        // Leaflet Map Initialization
+        function initMap() {
+            map = L.map('map').setView(CITY_CENTER, 14);
+
+            tileLayers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            });
+
+            tileLayers.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri'
+            });
+
+            tileLayers.osm.addTo(map);
+
+            markersGroup = L.layerGroup().addTo(map);
+            trafficGroup = L.layerGroup().addTo(map);
+            networkGroup = L.layerGroup().addTo(map);
+
+            renderMapLayers();
+        }
+
+        function switchTileLayer(type) {
+            map.removeLayer(tileLayers[currentTileLayer]);
+            tileLayers[type].addTo(map);
+            currentTileLayer = type;
+
+            document.getElementById('tile-osm').className = type === 'osm' ? 'px-2.5 py-1 text-xs rounded bg-cyan-600 text-white' : 'px-2.5 py-1 text-xs rounded bg-slate-800 text-slate-300 hover:bg-slate-700';
+            document.getElementById('tile-sat').className = type === 'satellite' ? 'px-2.5 py-1 text-xs rounded bg-cyan-600 text-white' : 'px-2.5 py-1 text-xs rounded bg-slate-800 text-slate-300 hover:bg-slate-700';
+        }
+
+        function renderMapLayers() {
+            if (!markersGroup) return;
+            markersGroup.clearLayers();
+
+            // Places Markers
+            cityData.places.forEach(place => {
+                if (cityData.mapFilters[place.type]) {
+                    const marker = L.circleMarker([place.lat, place.lng], {
+                        radius: 8,
+                        fillColor: place.type === 'hospitals' ? '#f43f5e' : place.type === 'police' ? '#3b82f6' : place.type === 'schools' ? '#f59e0b' : '#10b981',
+                        color: '#ffffff',
+                        weight: 2,
+                        fillOpacity: 0.9
+                    });
+                    marker.bindPopup(`<b>${place.name}</b><br><span style="text-transform:capitalize;">${place.type}</span>`);
+                    markersGroup.addLayer(marker);
+                }
+            });
+
+            // Complaints Markers
+            if (cityData.mapFilters.complaints) {
+                cityData.complaints.forEach(c => {
+                    if (c.lat && c.lng) {
+                        const marker = L.circleMarker([c.lat, c.lng], {
+                            radius: 7,
+                            fillColor: '#a855f7',
+                            color: '#ffffff',
+                            weight: 2,
+                            fillOpacity: 0.9
+                        });
+                        marker.bindPopup(`<b>${c.title}</b><br>Priority: ${c.priority}<br>Status: ${c.status}`);
+                        markersGroup.addLayer(marker);
+                    }
+                });
+            }
+        }
+
+        function toggleMapFilter(type) {
+            cityData.mapFilters[type] = !cityData.mapFilters[type];
+            const btn = document.getElementById(`filter-${type}`);
+            if (cityData.mapFilters[type]) {
+                btn.classList.add('active');
+                btn.style.opacity = '1';
+            } else {
+                btn.classList.remove('active');
+                btn.style.opacity = '0.4';
+            }
+            renderMapLayers();
+        }
+
+        function toggleTrafficOverlay(forceShow = false) {
+            trafficOverlayVisible = forceShow || !trafficOverlayVisible;
+            trafficGroup.clearLayers();
+
+            const btn = document.getElementById('btn-toggle-traffic');
+
+            if (trafficOverlayVisible) {
+                btn.classList.add('bg-amber-600', 'text-white');
+
+                // Draw mock traffic corridors
+                const polyline1 = L.polyline([
+                    [11.0100, 76.9500],
+                    [11.0168, 76.9558],
+                    [11.0250, 76.9600]
+                ], { color: '#ef4444', weight: 6, opacity: 0.8 }).bindPopup("Heavy Congestion (Outer Ring Road)");
+
+                const polyline2 = L.polyline([
+                    [11.0150, 76.9450],
+                    [11.0168, 76.9558],
+                    [11.0180, 76.9650]
+                ], { color: '#10b981', weight: 6, opacity: 0.8 }).bindPopup("Smooth Flow (Central Corridor)");
+
+                trafficGroup.addLayer(polyline1);
+                trafficGroup.addLayer(polyline2);
+
+                document.getElementById('route-panel').classList.remove('hidden');
+            } else {
+                btn.classList.remove('bg-amber-600', 'text-white');
+                document.getElementById('route-panel').classList.add('hidden');
+            }
+        }
+
+        function toggleNetworkOverlay() {
+            networkOverlayVisible = !networkOverlayVisible;
+            networkGroup.clearLayers();
+
+            const btn = document.getElementById('btn-toggle-network');
+
+            if (networkOverlayVisible) {
+                btn.classList.add('bg-cyan-600', 'text-white');
+
+                // Heatmap Signal Coverage Circles
+                const circle1 = L.circle([11.0168, 76.9558], { radius: 600, fillColor: '#06b6d4', fillOpacity: 0.25, stroke: false });
+                const circle2 = L.circle([11.0220, 76.9500], { radius: 450, fillColor: '#10b981', fillOpacity: 0.25, stroke: false });
+                const deadZone = L.circle([11.0120, 76.9620], { radius: 300, fillColor: '#ef4444', fillOpacity: 0.35, stroke: false }).bindPopup("Reported Dead Zone");
+
+                networkGroup.addLayer(circle1);
+                networkGroup.addLayer(circle2);
+                networkGroup.addLayer(deadZone);
+            } else {
+                btn.classList.remove('bg-cyan-600', 'text-white');
+            }
+        }
+
+        function locateUserGPS() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    const { latitude, longitude } = pos.coords;
+                    map.setView([latitude, longitude], 15);
+                    L.marker([latitude, longitude]).addTo(map).bindPopup("You are here").openPopup();
+                }, () => {
+                    alert("Unable to retrieve GPS location. Defaulting to City Center.");
+                });
+            }
+        }
+
+        function closeRoutePanel() {
+            document.getElementById('route-panel').classList.add('hidden');
+        }
+
+        // Complaint Rendering & Handling
+        function renderComplaints(filter = 'all') {
+            const dashList = document.getElementById('dash-complaints-list');
+            const fullList = document.getElementById('complaints-full-list');
+            
+            dashList.innerHTML = '';
+            fullList.innerHTML = '';
+
+            const filtered = cityData.complaints.filter(c => filter === 'all' || c.priority.toLowerCase() === filter);
+
+            filtered.forEach(c => {
+                const priorityBadge = c.priority === 'High' ? 'bg-red-950 text-red-400 border-red-800' : c.priority === 'Medium' ? 'bg-amber-950 text-amber-400 border-amber-800' : 'bg-slate-800 text-slate-300 border-slate-700';
+
+                // Dashboard Row
+                const rowDash = document.createElement('div');
+                rowDash.className = 'flex items-center justify-between bg-slate-800/40 p-3 rounded-lg border border-slate-800 text-xs';
+                rowDash.innerHTML = `
+                    <div>
+                        <div class="font-semibold text-slate-200">${c.title}</div>
+                        <div class="text-[10px] text-slate-400">${c.category} • ${c.date}</div>
+                    </div>
+                    <span class="px-2 py-0.5 text-[10px] rounded border ${priorityBadge}">${c.priority}</span>
+                `;
+                dashList.appendChild(rowDash);
+
+                // Full Complaints Row
+                const rowFull = document.createElement('div');
+                rowFull.className = 'p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-2 hover:bg-slate-800/30 transition';
+                rowFull.innerHTML = `
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-mono text-cyan-400">${c.id}</span>
+                            <h4 class="font-bold text-slate-200 text-sm">${c.title}</h4>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-0.5">Category: ${c.category} • Filed ${c.date}</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="px-2.5 py-1 text-[10px] rounded border ${priorityBadge}">${c.priority}</span>
+                        <span class="text-xs text-slate-300 font-medium px-2.5 py-1 bg-slate-800 rounded border border-slate-700">${c.status}</span>
+                    </div>
+                `;
+                fullList.appendChild(rowFull);
+            });
+
+            fetch('http://localhost:5000/api/complaints')
+    .then(response => response.json())
+    .then(complaints => {
+        document.getElementById('dash-active-complaints').innerText =
+            complaints.filter(c => c.status !== 'Resolved').length;
+    })
+    .catch(error => console.error('Complaint count error:', error));
+        }
+
+        function filterComplaints(val) {
+            renderComplaints(val);
+        }
+
+        function toggleComplaintModal() {
+            document.getElementById('modal-complaint').classList.toggle('hidden');
+        }
+
+    async function submitComplaint(e) {
+    e.preventDefault();
+
+    const title = document.getElementById('comp-title').value.trim();
+    const category = document.getElementById('comp-category').value;
+    const priority = document.getElementById('comp-priority').value;
+
+    if (!title || !category) {
+        alert('Please fill in the required fields.');
+        return;
+    }
+
+    try {
+        // Prepare data for the backend
+        const formData = new FormData();
+
+        formData.append('category', category);
+
+        // Your backend requires "description".
+        // We use the complaint title as the description.
+        formData.append('description', title);
+
+        // Generate location around the city center
+        const lat = CITY_CENTER[0] + (Math.random() - 0.5) * 0.01;
+        const lng = CITY_CENTER[1] + (Math.random() - 0.5) * 0.01;
+
+        formData.append('location', `${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+        formData.append('lat', lat);
+        formData.append('lng', lng);
+
+        // Send complaint to Node.js backend
+        const response = await fetch(
+            'http://localhost:5000/api/complaints',
+            {
+                method: 'POST',
+                body: formData
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to save complaint');
+        }
+
+        // Convert backend response to the format used by your UI
+        const newComp = {
+            id: data.id,
+            title: title,
+            category: data.category || category,
+            priority: priority,
+            status: data.status || 'Pending',
+            date: 'Just now',
+            lat: data.lat || lat,
+            lng: data.lng || lng
+        };
+
+        // Update the current page
+        cityData.complaints.unshift(newComp);
+
+        renderComplaints();
+        renderMapLayers();
+
+        toggleComplaintModal();
+
+        document.getElementById('form-complaint').reset();
+
+        alert(
+            `Complaint Logged Successfully!\n\nComplaint ID: ${data.id}`
+        );
+
+    } catch (error) {
+        console.error('Complaint submission error:', error);
+
+        alert(
+            'Could not save the complaint.\n\n' +
+            'Error: ' + error.message
+        );
+    }
+}
+    // ===============================
+// DEAD ZONE REPORTING
+// ===============================
+function toggleDeadZoneModal() {
+    const modal = document.getElementById('modal-deadzone');
+
+    if (!modal) {
+        console.error('Dead Zone modal not found');
+        return;
+    }
+
+    modal.classList.toggle('hidden');
+}
+
+async function loadDeadZoneCount() {
+    try {
+        const response = await fetch('http://localhost:5000/api/deadzones');
+        const deadzones = await response.json();
+
+        console.log('Dead Zone reports:', deadzones);
+
+        const jioCount = deadzones.filter(
+            dz => dz.provider === 'Jio 5G'
+        ).length;
+
+        document.getElementById('jio-deadzone-count').innerText = jioCount;
+    } catch (error) {
+        console.error('Dead Zone count error:', error);
+    }
+}
+async function submitDeadZone(e) {
+    e.preventDefault();
+
+    const provider = document.getElementById('dz-provider').value;
+    const description = document.getElementById('dz-location').value.trim();
+
+    if (!description) {
+        alert('Please enter the location details.');
+        return;
+    }
+
+    try {
+        const lat = CITY_CENTER[0] + (Math.random() - 0.5) * 0.01;
+        const lng = CITY_CENTER[1] + (Math.random() - 0.5) * 0.01;
+
+        const response = await fetch(
+            'http://localhost:5000/api/deadzones',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    provider: provider,
+                    description: description,
+                    lat: lat,
+                    lng: lng
+                })
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to save report');
+        }
+
+        alert(
+            'Dead Zone Report Saved Successfully!\n\n' +
+            'Report ID: ' + data.id
+        );
+    document.getElementById('dz-location').value = '';
+
+    loadDeadZoneCount();
+    toggleDeadZoneModal();
+
+    } catch (error) {
+        console.error('Dead Zone Error:', error);
+
+        alert(
+            'Could not save the Dead Zone report.\n\n' +
+            error.message
+        );
+    }
+}
+
+// Wi-Fi Nodes Render
+async function renderWiFiNodes() {
+    const container = document.getElementById('wifi-nodes-grid');
+    container.innerHTML = '<div class="text-slate-400 text-sm">Loading Wi-Fi nodes...</div>';
+
+    try {
+        const response = await fetch('http://localhost:5000/api/wifi');
+
+        if (!response.ok) {
+            throw new Error('Failed to load Wi-Fi data');
+        }
+
+        const wifiPlaces = await response.json();
+
+        container.innerHTML = '';
+
+        wifiPlaces.forEach(w => {
+            const card = document.createElement('div');
+
+            card.className =
+                'bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3';
+
+            card.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <div class="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                        <i data-lucide="wifi" class="w-5 h-5"></i>
+                    </div>
+
+                    <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">
+                        Active
+                    </span>
+                </div>
+
+                <h4 class="font-bold text-slate-200 text-sm">
+                    ${w.name}
+                </h4>
+
+                <div class="text-xs text-slate-400">
+                    Speed:
+                    <span class="text-slate-100 font-medium">
+                        ${w.speed || '100 Mbps'}
+                    </span>
+                </div>
+
+                <button
+                    onclick="toggleSection('digital-twin')"
+                    class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded transition">
+                    Locate on Map
+                </button>
+            `;
+
+            container.appendChild(card);
+        });
+
+        lucide.createIcons();
+
+    } catch (error) {
+        console.error('Wi-Fi loading error:', error);
+
+        container.innerHTML = `
+            <div class="text-red-400 text-sm">
+                Unable to load Wi-Fi data.
+            </div>
+        `;
+    }
+}
+
+        // Global Search Logic
+        function handleSearch(query) {
+            const resultsBox = document.getElementById('search-results');
+            const clearBtn = document.getElementById('clear-search');
+
+            if (!query.trim()) {
+                resultsBox.classList.add('hidden');
+                clearBtn.classList.add('hidden');
+                return;
+            }
+
+            clearBtn.classList.remove('hidden');
+            resultsBox.classList.remove('hidden');
+            resultsBox.innerHTML = '';
+
+            const matches = cityData.places.filter(p => p.name.toLowerCase().includes(query.toLowerCase()));
+
+            if (matches.length === 0) {
+                resultsBox.innerHTML = '<div class="p-3 text-xs text-slate-500">No city resources found</div>';
+                return;
+            }
+
+            matches.forEach(m => {
+                const item = document.createElement('div');
+                item.className = 'p-3 hover:bg-slate-800/80 cursor-pointer text-xs border-b border-slate-800/50 flex justify-between items-center';
+                item.innerHTML = `
+                    <div>
+                        <div class="font-medium text-slate-200">${m.name}</div>
+                        <div class="text-[10px] text-slate-400 capitalize">${m.type}</div>
+                    </div>
+                    <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-500"></i>
+                `;
+                item.onclick = () => {
+                    toggleSection('digital-twin');
+                    map.setView([m.lat, m.lng], 16);
+                    resultsBox.classList.add('hidden');
+                };
+                resultsBox.appendChild(item);
+            });
+            lucide.createIcons();
+        }
+
+        function clearSearch() {
+            document.getElementById('global-search').value = '';
+            handleSearch('');
+        }
+
+        // AI Chat Assistant Simulation
+        async function sendAIMessage() {
+    const input = document.getElementById('ai-chat-input');
+    const chatBox = document.getElementById('ai-chat-messages');
+    const msg = input.value.trim();
+
+    if (!msg) return;
+
+    // Show user message
+    const userBubble = document.createElement('div');
+    userBubble.className =
+        'bg-cyan-600/20 text-cyan-200 border border-cyan-800/50 p-3 rounded-lg max-w-lg ml-auto text-xs';
+    userBubble.innerText = msg;
+    chatBox.appendChild(userBubble);
+
+    input.value = '';
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    // Loading message
+    const botBubble = document.createElement('div');
+    botBubble.className =
+        'bg-slate-800/80 p-3 rounded-lg max-w-lg text-xs text-slate-300';
+    botBubble.innerHTML = '🤖 <b>NODEX AI:</b> Thinking...';
+    chatBox.appendChild(botBubble);
+
+    try {
+        const response = await fetch('http://localhost:5000/api/ai/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                query: msg
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'AI request failed');
+        }
+
+        botBubble.innerHTML =
+            `<div>🤖 <b>NODEX AI:</b></div>
+             <div>${data.reply || 'No response received.'}</div>`;
+
+    } catch (error) {
+        console.error('NODEX AI error:', error);
+
+        botBubble.innerHTML =
+            `<div>🤖 <b>NODEX AI:</b></div>
+             <div class="text-red-400">
+             AI connection failed. Make sure the NODEX backend is running on port 5000.
+             </div>`;
+    }
+
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+        // SOS Alarm Function
+        function triggerEmergencySOS() {
+            alert('🚨 EMERGENCY SOS BROADCASTED!\n\nYour precise location coordinates have been transmitted to the Central Police Dispatch (#112) and Emergency Trauma Care (#108). Stay calm.');
+        }
+        async function loadDashboardData() {
+    try {
+        const response = await fetch('http://localhost:5000/api/dashboard');
+
+        if (!response.ok) {
+            throw new Error('Dashboard API failed');
+        }
+
+        const data = await response.json();
+
+        document.getElementById('dash-active-complaints').textContent =
+            data.complaints.total;
+
+    } catch (error) {
+        console.error('Dashboard loading error:', error);
+    }
+}
+
+loadDashboardData();
+loadDeadZoneCount();
+
+
+// NODEX Voice Input
+var nodexRecognition = null;
+var nodexListening = false;
+
+function startVoiceInput() {
+    const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+        alert("Voice input is not supported in this browser. Please use Google Chrome or Microsoft Edge.");
+        return;
+    }
+
+    if (nodexListening && nodexRecognition) {
+        nodexRecognition.stop();
+        return;
+    }
+
+    nodexRecognition = new SpeechRecognition();
+
+    nodexRecognition.lang = "en-IN";
+    nodexRecognition.continuous = false;
+    nodexRecognition.interimResults = false;
+
+    const voiceButton = document.getElementById("ai-voice-btn");
+
+    nodexRecognition.onstart = function () {
+        nodexListening = true;
+
+        if (voiceButton) {
+            voiceButton.classList.add("bg-red-600");
+            voiceButton.classList.remove("bg-slate-800");
+        }
+    };
+
+    nodexRecognition.onresult = function (event) {
+        const transcript = event.results[0][0].transcript;
+        const input = document.getElementById("ai-chat-input");
+
+        if (input) {
+            input.value = transcript;
+
+            // Automatically send the voice message
+            setTimeout(function () {
+                sendAIMessage();
+            }, 300);
+        }
+    };
+
+    nodexRecognition.onerror = function (event) {
+        console.error("NODEX voice error:", event.error);
+
+        if (event.error === "not-allowed") {
+            alert("Microphone permission was denied. Please allow microphone access.");
+        }
+    };
+
+    nodexRecognition.onend = function () {
+        nodexListening = false;
+
+        if (voiceButton) {
+            voiceButton.classList.remove("bg-red-600");
+            voiceButton.classList.add("bg-slate-800");
+        }
+    };
+
+    nodexRecognition.start();
+}
+// NODEX BACKEND AI
+async function connectNodexAI(message) {
+    try {
+        const response = await fetch('http://localhost:5000/api/ai/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                query: message
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('AI server error');
+        }
+
+        const data = await response.json();
+
+        return data.reply || 'NODEX AI did not return a response.';
+
+    } catch (error) {
+        console.error('NODEX AI connection error:', error);
+
+        return 'Unable to connect to NODEX AI. Please make sure the backend is running on port 5000.';
+    }
+}
+// WHAT-IF CITY SIMULATOR
+function updateWhatIfSimulator() {
+    const traffic = Number(document.getElementById('sim-traffic').value);
+    const network = Number(document.getElementById('sim-network').value);
+    const response = Number(document.getElementById('sim-response').value);
+
+    // Update displayed slider values
+    document.getElementById('sim-traffic-value').textContent = traffic + '%';
+    document.getElementById('sim-network-value').textContent = network + '%';
+    document.getElementById('sim-response-value').textContent = response + '%';
+
+    // Calculate simulation results
+    const trafficFlow = 100 - traffic;
+    const cityHealth = Math.round(
+        (trafficFlow * 0.4) +
+        (network * 0.3) +
+        (response * 0.3)
+    );
+
+    const responseScore = response;
+
+    document.getElementById('sim-health').textContent = cityHealth + '%';
+    document.getElementById('sim-flow').textContent = trafficFlow + '%';
+    document.getElementById('sim-score').textContent = responseScore + '%';
+
+    // Generate summary
+    let summary = '';
+
+    if (traffic >= 70) {
+        summary += 'High traffic congestion is affecting city mobility. ';
+    } else if (traffic >= 40) {
+        summary += 'Moderate traffic congestion is present. ';
+    } else {
+        summary += 'Traffic conditions are relatively smooth. ';
+    }
+
+    if (network < 70) {
+        summary += 'Network availability is below the desired level. ';
+    } else {
+        summary += 'Network availability is adequate. ';
+    }
+
+    if (response < 50) {
+        summary += 'Emergency response readiness could be improved.';
+    } else {
+        summary += 'Emergency response readiness is satisfactory.';
+    }
+
+    document.getElementById('sim-summary').textContent = summary;
+}
+
+function resetWhatIfSimulator() {
+    document.getElementById('sim-traffic').value = 30;
+    document.getElementById('sim-network').value = 90;
+    document.getElementById('sim-response').value = 80;
+
+    updateWhatIfSimulator();
+}
+
+// TIME TRAVEL MACHINE
+function updateTimeTravel() {
+    const slider = document.getElementById('time-travel-slider');
+    const value = Number(slider.value);
+
+    const daysAgo = 6 - value;
+
+    const healthValues = [88, 89, 90, 91, 92, 93, 94];
+    const trafficValues = [38, 35, 32, 29, 26, 24, 22];
+    const networkValues = [94, 95, 96, 97, 98, 98, 99];
+    const responseValues = [82, 84, 85, 87, 88, 90, 91];
+
+    document.getElementById('tt-health').textContent =
+        healthValues[value] + '%';
+
+    document.getElementById('tt-traffic').textContent =
+        trafficValues[value] + '%';
+
+    document.getElementById('tt-network').textContent =
+        networkValues[value] + '%';
+
+    document.getElementById('tt-response').textContent =
+        responseValues[value] + '%';
+
+    if (daysAgo === 0) {
+        document.getElementById('time-travel-date').textContent = 'Today';
+
+        document.getElementById('tt-summary').textContent =
+            "Showing today's city conditions.";
+    } else {
+        document.getElementById('time-travel-date').textContent =
+            daysAgo + (daysAgo === 1 ? ' day ago' : ' days ago');
+
+        document.getElementById('tt-summary').textContent =
+            'Showing simulated NODEX city conditions from ' +
+            daysAgo +
+            (daysAgo === 1 ? ' day ago.' : ' days ago.');
+    }
+}
+
+// Initialize Time Travel Machine
+document.addEventListener('DOMContentLoaded', function () {
+    updateTimeTravel();
+});
+
+// Initialize simulator values
+document.addEventListener('DOMContentLoaded', function () {
+    updateWhatIfSimulator();
+});
+
+// COMMAND CENTRE LIVE DATA
+async function loadCommandCentre() {
+    try {
+        const response = await fetch('http://localhost:5000/api/dashboard');
+
+        if (!response.ok) {
+            throw new Error('Dashboard API error');
+        }
+
+        const data = await response.json();
+
+        // Complaints
+        document.getElementById('cc-complaints').textContent =
+            data.complaints?.total ?? 0;
+
+        // Emergency events
+        document.getElementById('cc-sos').textContent =
+            data.sosEvents ?? 0;
+        // City Network
+const wifiNodes = data.wifiNodes ?? 0;
+
+document.getElementById('cc-network').textContent =
+    wifiNodes > 0 ? '99.1%' : '0%';
+
+    // Traffic Status
+const traffic = 22;
+
+document.getElementById('cc-traffic').textContent =
+    traffic + '%';
+
+    
+        console.log('Command Centre live data:', data);
+
+    } catch (error) {
+        console.error('Command Centre data error:', error);
+    }
+}
+// Load Command Centre data when page opens
+document.addEventListener('DOMContentLoaded', function () {
+    loadCommandCentre();
+    
+});
+
+setInterval(loadCommandCentre, 10000);
+    </script>
+</body>
+
+
