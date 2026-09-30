@@ -1,0 +1,8 @@
+{
+  "name":"nodex-backend",
+  "version":"1.1.0",
+  "description":"Submission-ready NODEX Smart City backend",
+  "main":"server.js",
+  "scripts":{"start":"node server.js"},
+  "dependencies":{"cors":"^2.8.5","express":"^5.1.0","multer":"^2.0.2","sqlite3":"^5.1.7"}
+}
